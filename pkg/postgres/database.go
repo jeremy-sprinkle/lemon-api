@@ -5,6 +5,7 @@ import (
 	"fmt"
 	lemon_api "lemon/lemon-api"
 	"lemon/lemon-api/pkg/config"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -93,6 +94,8 @@ func NewService(cfg *config.Config) (*Service, error) {
 }
 
 func (s *Service) InsertFeedback(feedback lemon_api.Feedback) (sql.Result, error) {
+	now := time.Now().UTC()
+	feedback.Submitted = &now
 	return s.stmtInsertFeedback.Exec(feedback)
 }
 
