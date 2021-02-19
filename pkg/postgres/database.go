@@ -16,9 +16,9 @@ type Service struct {
 
 	conn *sqlx.DB
 
-	stmtInsertFeedback        *sqlx.NamedStmt
-	stmtGetFeedback				*sqlx.NamedStmt
-	stmtMarkReadFeedback		*sqlx.NamedStmt
+	stmtInsertFeedback   *sqlx.NamedStmt
+	stmtGetFeedback      *sqlx.NamedStmt
+	stmtMarkReadFeedback *sqlx.NamedStmt
 }
 
 func NewService(cfg *config.Config) (*Service, error) {
@@ -59,7 +59,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 	)
 `)
 	if err != nil {
-		log.WithFields(log.Fields{"err":err}).Error("Failed stmtCreateFeedback")
+		log.WithFields(log.Fields{"err": err}).Error("Failed stmtCreateFeedback")
 		return nil, err
 	}
 
@@ -69,14 +69,13 @@ func NewService(cfg *config.Config) (*Service, error) {
 		rating,
 	    description,
 	    type,
-	    submitted
+	    submitted,
+	    read
 	FROM
 		feedback
-	WHERE
-		read = false
 `)
 	if err != nil {
-		log.WithFields(log.Fields{"err":err}).Error("Failed stmtGetFeedback")
+		log.WithFields(log.Fields{"err": err}).Error("Failed stmtGetFeedback")
 		return nil, err
 	}
 
@@ -86,7 +85,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 	WHERE id = :id
 `)
 	if err != nil {
-		log.WithFields(log.Fields{"err":err}).Error("Failed stmtMarkReadFeedback")
+		log.WithFields(log.Fields{"err": err}).Error("Failed stmtMarkReadFeedback")
 		return nil, err
 	}
 
@@ -95,4 +94,33 @@ func NewService(cfg *config.Config) (*Service, error) {
 
 func (s *Service) InsertFeedback(feedback lemon_api.Feedback) (sql.Result, error) {
 	return s.stmtInsertFeedback.Exec(feedback)
+}
+
+func (s *Service) GetFeedback() ([]*lemon_api.Feedback, error) {
+	var feedback []*lemon_api.Feedback
+	query := struct{}{}
+	err := s.stmtGetFeedback.Select(&feedback, query)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to Select GetFeedback")
+		return nil, err
+	}
+	return feedback, err
+}
+
+func (s *Service) MarkReadFeedback(ID int64) error {
+	query := struct {
+		ID int64 `db:"id"`
+	}{
+		ID: ID,
+	}
+	_, err := s.stmtMarkReadFeedback.Exec(query)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to Exec MarkReadFeedback")
+		return err
+	}
+	return nil
 }

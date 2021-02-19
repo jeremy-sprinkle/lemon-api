@@ -3,10 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/gin-gonic/gin"
-	log "github.com/sirupsen/logrus"
 	"lemon/lemon-api/pkg/config"
 	"lemon/lemon-api/pkg/rest"
+
+	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 func main() {

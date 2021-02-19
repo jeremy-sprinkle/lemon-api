@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"lemon/lemon-api/pkg/config"
@@ -32,8 +33,9 @@ func NewServer(cfg *config.Config, e *gin.Engine) *Server {
 
 func (s *Server) Initialise() {
 
-	s.engine.POST("/api/lemon-test", s.LemonTest)
-	s.engine.POST("api/new-feedback", s.InsertFeedback)
+	s.engine.POST("api/feedback", s.InsertFeedback)
+	s.engine.GET("api/feedback", s.GetFeedback)
+	s.engine.PUT("api/feedback/:ID", s.MarkReadFeedback)
 
 	if service, err := postgres.NewService(s.config); err != nil {
 		log.WithFields(log.Fields{
@@ -55,35 +57,56 @@ func (s *Server) Initialise() {
 
 }
 
-func (s *Server) LemonTest(c *gin.Context) {
-	log.WithFields(log.Fields{
-		"TEST": "BOIIIIII",
-	}).Info("This is text")
-
-	logJSON := struct {
-		Spoof int64 `json:"spoof"`
-	}{
-		Spoof: 69,
-	}
-	c.JSON(http.StatusOK, logJSON)
-}
-
 func (s *Server) InsertFeedback(c *gin.Context) {
 	var feedback lemon_api.Feedback
 	if err := c.BindJSON(&feedback); err != nil {
 		log.WithFields(log.Fields{
-			"err":err,
-			"data":feedback,
+			"err":  err,
+			"data": feedback,
 		}).Error("Failed to bind JSON")
 		c.AbortWithStatus(http.StatusBadRequest)
 	}
-
 	_, err := s.database.InsertFeedback(feedback)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"err":err,
+			"err": err,
 		}).Error("Failed to insert feedback")
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}
+	c.AbortWithStatus(http.StatusOK)
+}
+
+func (s *Server) GetFeedback(c *gin.Context) {
+	data, err := s.database.GetFeedback()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to get feedback from database")
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+func (s *Server) MarkReadFeedback(c *gin.Context) {
+	ID := c.Param("ID")
+	if ID == "" {
+		log.Error("No ID provided")
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+	feedbackID, err := strconv.ParseInt(ID, 10, 32)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to convert ID to Int")
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+	err = s.database.MarkReadFeedback(feedbackID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to mark read in database")
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+
 	c.AbortWithStatus(http.StatusOK)
 }
