@@ -1,0 +1,14 @@
+{
+  "api": {
+    "port": 8080  },
+  "databases": {
+    "dbname": {
+      "hostname": "host",
+      "username": "user",
+      "password": "pass",
+      "database": "dbname",
+      "port": 5432,
+      "encryption_key": "veryUnsecureKey"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+NAMESPACE			= lemon/lemon-api
+DATE				= $(shell date -u +%Y%m%d_%H%M%S)
+NAME				= lemon-api
+
+lemon_DB_HOST	?= host
+lemon_DB_PORT	?= 5432
+lemon_DB_NAME	?= name
+lemon_DB_USER	?= user
+lemon_DB_PASS	?= pass
+
+build:
+	CGO_ENABLED=0 go build -ldflags "-s -X $(NAMESPACE)/pkg/version.Version=$(VERSION) -X $(NAMESPACE)/pkg/version.Hash=$(GITHASH) -X $(NAMESPACE)/pkg/version.BuiltDate=$(DATE)" -o ./dist/${NAME} $(NAMESPACE)/cmd/
+	zip -r ${NAME}.zip dist/*
+
+lint:
+	goimports -l -w .
+
+db:
+	${GOPATH}/bin/migrate -path migrate/lemon -database "postgres://${lemon_DB_USER}:${lemon_DB_PASS}@${lemon_DB_HOST}:${lemon_DB_PORT}/${lemon_DB_NAME}" up
+
+drop-db:
+	${GOPATH}/bin/migrate -path migrate/lemon -database "postgres://${lemon_DB_USER}:${lemon_DB_PASS}@${lemon_DB_HOST}:${lemon_DB_PORT}/${lemon_DB_NAME}" down 1
+
