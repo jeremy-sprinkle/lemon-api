@@ -23,14 +23,19 @@ type DatabaseConfig struct {
 	Port          int64  `json:"port"`
 	EncryptionKey string `json:"encryption_key"`
 }
+type SecurityConfig struct {
+	Secret string `json:"secret"`
+	Salt   string `json:"salt"`
+}
 
 type Databases struct {
 	Gamejam *DatabaseConfig
 }
 
 type Config struct {
-	API       *APIConfig `json:"api"`
-	Databases *Databases `json:"databases"`
+	API       *APIConfig      `json:"api"`
+	Databases *Databases      `json:"databases"`
+	Security  *SecurityConfig `json:"security"`
 }
 
 func LoadConfig(path string) (*Config, error) {

@@ -2,8 +2,11 @@ package lemon_api
 
 import "time"
 
-type Lemon struct {
-	Thing string `json:"thing" db:"thing"`
+type User struct {
+	ID        string `json:"id" db:"id"`
+	Username  string `json:"username" db:"username"`
+	Hash      string `json:"hash" db:"hash"`
+	SaveState string `json:"save_state" db:"save_state"`
 }
 
 type Feedback struct {

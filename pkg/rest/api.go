@@ -37,6 +37,11 @@ func (s *Server) Initialise() {
 	s.engine.GET("api/feedback", s.GetFeedback)
 	s.engine.PUT("api/feedback/:ID", s.MarkReadFeedback)
 
+	s.engine.POST("api/save", s.NewUser)
+	s.engine.PUT("api/save/:ID", s.UpdateUser)
+	s.engine.GET("api/save/:ID", s.GetUser)
+	s.engine.DELETE("api/save/:ID", s.DeleteUser)
+
 	if service, err := postgres.NewService(s.config); err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -105,6 +110,75 @@ func (s *Server) MarkReadFeedback(c *gin.Context) {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Error("Failed to mark read in database")
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+
+	c.AbortWithStatus(http.StatusOK)
+}
+
+func (s *Server) NewUser(c *gin.Context) {
+	var user lemon_api.User
+	if err := c.BindJSON(&user); err != nil {
+		log.WithFields(log.Fields{
+			"err":  err,
+			"data": user,
+		}).Error("Failed to bind JSON")
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+	token, err := s.database.NewUser(user)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to insert new user")
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+	c.JSON(http.StatusOK, token)
+}
+
+func (s *Server) GetUser(c *gin.Context) {
+	ID := c.Param("ID")
+	if ID == "" {
+		log.Error("No ID provided")
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+	data, err := s.database.GetUser(ID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to get user from database")
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+func (s *Server) UpdateUser(c *gin.Context) {
+	ID := c.Param("ID")
+	if ID == "" {
+		log.Error("No ID provided")
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+	err := s.database.UpdateUser(ID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to update user in database")
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}
+
+	c.AbortWithStatus(http.StatusOK)
+}
+
+func (s *Server) DeleteUser(c *gin.Context) {
+	ID := c.Param("ID")
+	if ID == "" {
+		log.Error("No ID provided")
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+	err := s.database.DeleteUser(ID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to update user in database")
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}
 
