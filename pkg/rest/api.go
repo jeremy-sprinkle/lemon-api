@@ -1,18 +1,25 @@
 package rest
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"database/sql"
 	"fmt"
 	lemon_api "lemon/lemon-api"
+	"lemon/lemon-api/pkg/security"
 	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
+
 	"lemon/lemon-api/pkg/config"
 	"lemon/lemon-api/pkg/postgres"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -37,10 +44,11 @@ func (s *Server) Initialise() {
 	s.engine.GET("api/feedback", s.GetFeedback)
 	s.engine.PUT("api/feedback/:ID", s.MarkReadFeedback)
 
-	s.engine.POST("api/save", s.NewUser)
-	s.engine.PUT("api/save/:ID", s.UpdateUser)
-	s.engine.GET("api/save/:ID", s.GetUser)
-	s.engine.DELETE("api/save/:ID", s.DeleteUser)
+	s.engine.POST("api/register", s.NewUser)
+	s.engine.POST("api/login", s.Login)
+	s.engine.PUT("api/save/:ID", security.Authenticate(s.config, false), s.UpdateUser)
+	s.engine.GET("api/save/:ID", security.Authenticate(s.config, false), s.GetUser)
+	s.engine.DELETE("api/save/:ID", security.Authenticate(s.config, false), s.DeleteUser)
 
 	if service, err := postgres.NewService(s.config); err != nil {
 		log.WithFields(log.Fields{
@@ -125,13 +133,45 @@ func (s *Server) NewUser(c *gin.Context) {
 		}).Error("Failed to bind JSON")
 		c.AbortWithStatus(http.StatusBadRequest)
 	}
-	token, err := s.database.NewUser(user)
+
+	accountID := uuid.New().String()
+	user.ID = accountID
+
+	_, err := s.database.NewUser(user)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Error("Failed to insert new user")
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}
+
+	token, err := s.GenerateToken(user.Username, user.Hash)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to generate token")
+	}
+
+	c.JSON(http.StatusOK, token)
+}
+
+func (s *Server) Login(c *gin.Context) {
+	var loginRequest lemon_api.TokenRequest
+	if err := c.BindJSON(&loginRequest); err != nil {
+		log.WithFields(log.Fields{
+			"err":  err,
+			"data": loginRequest,
+		}).Error("Failed to bind JSON")
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+
+	token, err := s.GenerateToken(loginRequest.Username, loginRequest.Hash)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to generate token")
+	}
+
 	c.JSON(http.StatusOK, token)
 }
 
@@ -141,7 +181,18 @@ func (s *Server) GetUser(c *gin.Context) {
 		log.Error("No ID provided")
 		c.AbortWithStatus(http.StatusBadRequest)
 	}
-	data, err := s.database.GetUser(ID)
+
+	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
+	if err != nil {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	if ID != *tokenAccountID {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	data, err := s.database.GetUserByID(ID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
@@ -152,12 +203,15 @@ func (s *Server) GetUser(c *gin.Context) {
 }
 
 func (s *Server) UpdateUser(c *gin.Context) {
-	ID := c.Param("ID")
-	if ID == "" {
-		log.Error("No ID provided")
+	var user lemon_api.User
+	if err := c.BindJSON(&user); err != nil {
+		log.WithFields(log.Fields{
+			"err":  err,
+			"data": user,
+		}).Error("Failed to bind JSON")
 		c.AbortWithStatus(http.StatusBadRequest)
 	}
-	err := s.database.UpdateUser(ID)
+	err := s.database.UpdateUser(user)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
@@ -183,4 +237,45 @@ func (s *Server) DeleteUser(c *gin.Context) {
 	}
 
 	c.AbortWithStatus(http.StatusOK)
+}
+
+func (s *Server) GenerateToken(username string, hash string) (*lemon_api.Token, error) {
+	existingAccount, err := s.database.GetUserByUsername(username)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, security.ErrInvalidAccount
+		}
+		return nil, err
+	}
+
+	// Salt + ReHash Password
+	newHash := sha256.Sum256([]byte(hash + s.config.Security.Salt + existingAccount.Username))
+	newHashSlice := newHash[:]
+	hashString := bytes.NewBuffer(newHashSlice).String()
+
+	// Password Incorrect
+	if existingAccount.Hash != hashString {
+		return nil, security.ErrInvalidCredentials
+	}
+
+	var token lemon_api.Token
+
+	tkn := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
+		"iss":   "https://lemon.indiedev.io",
+		"exp":   time.Now().Add(time.Hour * 24 * 7).Unix(),
+		"sub":   existingAccount.ID,
+		"aud":   "https://lemon.indiedev.io",
+		"nbf":   time.Now().Unix(),
+		"id":    existingAccount.ID,
+		"guest": false,
+		"name":  existingAccount.Username,
+	})
+
+	signedString, err := tkn.SignedString([]byte(s.config.Security.Secret))
+	if err != nil {
+		return nil, err
+	}
+
+	token.Value = signedString
+	return &token, nil
 }

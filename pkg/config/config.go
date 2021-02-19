@@ -24,8 +24,10 @@ type DatabaseConfig struct {
 	EncryptionKey string `json:"encryption_key"`
 }
 type SecurityConfig struct {
-	Secret string `json:"secret"`
-	Salt   string `json:"salt"`
+	Secret   string `json:"secret"`
+	Salt     string `json:"salt"`
+	Redirect string `json:"redirect"`
+	Enforce  bool   `json:"enforce"`
 }
 
 type Databases struct {

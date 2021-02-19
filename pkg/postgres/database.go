@@ -23,10 +23,11 @@ type Service struct {
 	stmtGetFeedback      *sqlx.NamedStmt
 	stmtMarkReadFeedback *sqlx.NamedStmt
 
-	stmtNewUser    *sqlx.NamedStmt
-	stmtGetUser    *sqlx.NamedStmt
-	stmtUpdateUser *sqlx.NamedStmt
-	stmtDeleteUser *sqlx.NamedStmt
+	stmtNewUser           *sqlx.NamedStmt
+	stmtGetUserByID       *sqlx.NamedStmt
+	stmtGetUserByUsername *sqlx.NamedStmt
+	stmtUpdateUser        *sqlx.NamedStmt
+	stmtDeleteUser        *sqlx.NamedStmt
 }
 
 func NewService(cfg *config.Config) (*Service, error) {
@@ -116,7 +117,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 
-	srv.stmtGetUser, err = srv.conn.PrepareNamed(`
+	srv.stmtGetUserByID, err = srv.conn.PrepareNamed(`
 	SELECT 
 	    id,
 		PGP_SYM_DECRYPT(username, :encrypt_key) AS username,
@@ -124,9 +125,27 @@ func NewService(cfg *config.Config) (*Service, error) {
 	    save_state
 	FROM
 		usertable
+	WHERE
+		id = :id
 `)
 	if err != nil {
-		log.WithFields(log.Fields{"err": err}).Error("Failed stmtGetUser")
+		log.WithFields(log.Fields{"err": err}).Error("Failed stmtGetUserByID")
+		return nil, err
+	}
+
+	srv.stmtGetUserByUsername, err = srv.conn.PrepareNamed(`
+	SELECT 
+	    id,
+		PGP_SYM_DECRYPT(username, :encrypt_key) AS username,
+	    hash,
+	    save_state
+	FROM
+		usertable
+	WHERE
+		username = :username
+`)
+	if err != nil {
+		log.WithFields(log.Fields{"err": err}).Error("Failed stmtGetUserByUsername")
 		return nil, err
 	}
 
@@ -134,7 +153,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 	UPDATE usertable
 	SET 
 	 hash = :hash,
-	 save_state = save_state
+	 save_state = :save_state
 	WHERE id = :id
 `)
 	if err != nil {
@@ -194,7 +213,7 @@ func (s *Service) NewUser(user lemon_api.User) (sql.Result, error) {
 		ID            string `db:"id"`
 		Username      string `db:"username"`
 		Hash          string `db:"hash"`
-		SaveState     string `db:"savestate"`
+		SaveState     string `db:"save_state"`
 		EncryptionKey string `db:"encrypt_key"`
 	}{
 		ID:            user.ID,
@@ -206,8 +225,8 @@ func (s *Service) NewUser(user lemon_api.User) (sql.Result, error) {
 	return s.stmtNewUser.Exec(query)
 }
 
-func (s *Service) GetUser(ID string) (*lemon_api.User, error) {
-	var user *lemon_api.User
+func (s *Service) GetUserByID(ID string) (*lemon_api.User, error) {
+	var user lemon_api.User
 	query := struct {
 		ID            string `db:"id"`
 		EncryptionKey string `db:"encrypt_key"`
@@ -215,22 +234,45 @@ func (s *Service) GetUser(ID string) (*lemon_api.User, error) {
 		ID:            ID,
 		EncryptionKey: s.encryptionKey,
 	}
-	err := s.stmtGetFeedback.Get(&user, query)
+	err := s.stmtGetUserByID.Get(&user, query)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Error("Failed to Get GetUser")
 		return nil, err
 	}
-	return user, err
+	return &user, err
 }
 
-func (s *Service) UpdateUser(ID string) error {
+func (s *Service) GetUserByUsername(username string) (*lemon_api.User, error) {
+	var user lemon_api.User
 	query := struct {
-		ID            string `db:"id"`
+		Username      string `db:"username"`
 		EncryptionKey string `db:"encrypt_key"`
 	}{
-		ID:            ID,
+		Username:      username,
+		EncryptionKey: s.encryptionKey,
+	}
+	err := s.stmtGetUserByID.Get(&user, query)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to Get GetUser")
+		return nil, err
+	}
+	return &user, err
+}
+
+func (s *Service) UpdateUser(user lemon_api.User) error {
+	query := struct {
+		ID            string `db:"id"`
+		Hash          string `db:"hash"`
+		SaveState     string `db:"save_state"`
+		EncryptionKey string `db:"encrypt_key"`
+	}{
+		ID:            user.ID,
+		Hash:          user.Hash,
+		SaveState:     user.SaveState,
 		EncryptionKey: s.encryptionKey,
 	}
 	_, err := s.stmtUpdateUser.Exec(query)

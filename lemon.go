@@ -17,3 +17,12 @@ type Feedback struct {
 	Submitted   *time.Time `json:"submitted" db:"submitted"`
 	Read        bool       `json:"read" db:"read"`
 }
+
+type TokenRequest struct {
+	Username string `json:"username"`
+	Hash     string `json:"hash"`
+}
+
+type Token struct {
+	Value string `json:"token"`
+}
