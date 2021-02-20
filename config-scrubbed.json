@@ -10,5 +10,9 @@
       "port": 5432,
       "encryption_key": "veryUnsecureKey"
     }
+  },
+  "security": {
+    "salt": "salty",
+    "secret": "secrets"
   }
 }
