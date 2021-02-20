@@ -14,5 +14,9 @@
   "security": {
     "salt": "salty",
     "secret": "secrets"
+  },
+  "webhooks": {
+    "discord-feedback": "URLHERE",
+    "discord-new-user": "URLHERE",
   }
 }
