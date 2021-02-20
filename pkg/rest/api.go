@@ -46,6 +46,7 @@ func (s *Server) Initialise() {
 
 	s.engine.POST("api/register", s.NewUser)
 	s.engine.POST("api/login", s.Login)
+	s.engine.GET("api/logout", s.Logout)
 	s.engine.PUT("api/save/", security.Authenticate(s.config), s.UpdateUser)
 	s.engine.GET("api/save/", security.Authenticate(s.config), s.GetUser)
 	s.engine.DELETE("api/save/", security.Authenticate(s.config), s.DeleteUser)
@@ -176,14 +177,19 @@ func (s *Server) Login(c *gin.Context) {
 			"err": err,
 		}).Error("Failed to generate token")
 	}
-
+	c.SetCookie("lemon-token", token.Value, 604800, "/", ".indiedev.io", true, false)
 	c.JSON(http.StatusOK, token)
+}
+
+func (s *Server) Logout(c *gin.Context) {
+	c.SetCookie("lemon-token", "", 0, "/", ".indiedev.io", true, false)
+	c.Redirect(http.StatusPermanentRedirect, "/login")
 }
 
 func (s *Server) GetUser(c *gin.Context) {
 	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
 	if err != nil {
-		log.WithFields(log.Fields{"err":err}).Error("Failed to get token.ID")
+		log.WithFields(log.Fields{"err": err}).Error("Failed to get token.ID")
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
@@ -209,7 +215,7 @@ func (s *Server) UpdateUser(c *gin.Context) {
 	}
 	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
 	if err != nil {
-		log.WithFields(log.Fields{"err":err}).Error("Failed to get token.ID")
+		log.WithFields(log.Fields{"err": err}).Error("Failed to get token.ID")
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
@@ -228,7 +234,7 @@ func (s *Server) UpdateUser(c *gin.Context) {
 func (s *Server) DeleteUser(c *gin.Context) {
 	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
 	if err != nil {
-		log.WithFields(log.Fields{"err":err}).Error("Failed to get token.ID")
+		log.WithFields(log.Fields{"err": err}).Error("Failed to get token.ID")
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
