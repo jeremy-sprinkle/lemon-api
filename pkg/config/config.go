@@ -34,10 +34,16 @@ type Databases struct {
 	Gamejam *DatabaseConfig
 }
 
+type Webhooks struct {
+	FeedbackURL string `json:"discord-feedback"`
+	NewUserURL  string `json:"discord-new-user"`
+}
+
 type Config struct {
 	API       *APIConfig      `json:"api"`
 	Databases *Databases      `json:"databases"`
 	Security  *SecurityConfig `json:"security"`
+	Webhooks  *Webhooks       `json:"webhooks"`
 }
 
 func LoadConfig(path string) (*Config, error) {

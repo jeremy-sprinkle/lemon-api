@@ -21,6 +21,7 @@ type Service struct {
 
 	stmtInsertFeedback   *sqlx.NamedStmt
 	stmtGetFeedback      *sqlx.NamedStmt
+	stmtGetFeedbackByID  *sqlx.NamedStmt
 	stmtMarkReadFeedback *sqlx.NamedStmt
 
 	stmtNewUser           *sqlx.NamedStmt
@@ -67,6 +68,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 	    :type,
 	    :submitted
 	)
+	RETURNING id;
 `)
 	if err != nil {
 		log.WithFields(log.Fields{"err": err}).Error("Failed stmtCreateFeedback")
@@ -75,7 +77,6 @@ func NewService(cfg *config.Config) (*Service, error) {
 
 	srv.stmtGetFeedback, err = srv.conn.PrepareNamed(`
 	SELECT 
-	    id,
 		rating,
 	    description,
 	    type,
@@ -86,6 +87,23 @@ func NewService(cfg *config.Config) (*Service, error) {
 `)
 	if err != nil {
 		log.WithFields(log.Fields{"err": err}).Error("Failed stmtGetFeedback")
+		return nil, err
+	}
+
+	srv.stmtGetFeedbackByID, err = srv.conn.PrepareNamed(`
+	SELECT 
+		rating,
+	    description,
+	    type,
+	    submitted,
+	    read
+	FROM
+		feedback
+	WHERE
+		id = :id;
+`)
+	if err != nil {
+		log.WithFields(log.Fields{"err": err}).Error("Failed stmtGetFeedbackByID")
 		return nil, err
 	}
 
@@ -173,10 +191,12 @@ func NewService(cfg *config.Config) (*Service, error) {
 	return srv, nil
 }
 
-func (s *Service) InsertFeedback(feedback lemon_api.Feedback) (sql.Result, error) {
+func (s *Service) InsertFeedback(feedback lemon_api.Feedback) (int64, error) {
 	now := time.Now().UTC()
 	feedback.Submitted = &now
-	return s.stmtInsertFeedback.Exec(feedback)
+	var returnID int64
+	err := s.stmtInsertFeedback.QueryRow(feedback).Scan(&returnID)
+	return returnID, err
 }
 
 func (s *Service) GetFeedback() ([]*lemon_api.Feedback, error) {
@@ -187,6 +207,21 @@ func (s *Service) GetFeedback() ([]*lemon_api.Feedback, error) {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Error("Failed to Select GetFeedback")
+		return nil, err
+	}
+	return feedback, err
+}
+
+func (s *Service) GetFeedbackByID(ID int64) (*lemon_api.Feedback, error) {
+	var feedback *lemon_api.Feedback
+	query := struct {
+		ID int64 `db:"id"`
+	}{ID: ID}
+	err := s.stmtGetFeedback.Get(&feedback, query)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to Get GetFeedbackByID")
 		return nil, err
 	}
 	return feedback, err

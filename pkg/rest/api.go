@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	lemon_api "lemon/lemon-api"
 	"lemon/lemon-api/pkg/security"
@@ -42,6 +43,7 @@ func (s *Server) Initialise() {
 
 	s.engine.POST("api/feedback", s.InsertFeedback)
 	s.engine.GET("api/feedback", s.GetFeedback)
+	s.engine.GET("api/feedback/:ID", s.GetFeedbackByID)
 	s.engine.PUT("api/feedback/:ID", s.MarkReadFeedback)
 
 	s.engine.POST("api/register", s.NewUser)
@@ -80,13 +82,30 @@ func (s *Server) InsertFeedback(c *gin.Context) {
 		}).Error("Failed to bind JSON")
 		c.AbortWithStatus(http.StatusBadRequest)
 	}
-	_, err := s.database.InsertFeedback(feedback)
+	returnedID, err := s.database.InsertFeedback(feedback)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Error("Failed to insert feedback")
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}
+
+	webhookBody, err := json.Marshal(map[string]string{
+		"username":   "Feedback Piggy",
+		"avatar_url": "https://www.discordavatars.com/wp-content/uploads/2020/07/disney-character-avatar-074.jpg",
+		"content": "New feedback given! Rating: " + strconv.FormatInt(feedback.Rating, 10) + "\n " +
+			"Type: " + feedback.Type + "\n" +
+			"https://lemon.indiedev.io/feedback/" + strconv.FormatInt(returnedID, 10) + " to read full feedback.",
+	})
+	if err != nil {
+		log.Error(err)
+	}
+
+	hook, err := http.Post(s.config.Webhooks.FeedbackURL, "application/json", bytes.NewBuffer(webhookBody))
+	if err != nil {
+		log.Error(err, hook)
+	}
+
 	c.AbortWithStatus(http.StatusOK)
 }
 
@@ -99,6 +118,25 @@ func (s *Server) GetFeedback(c *gin.Context) {
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}
 	c.JSON(http.StatusOK, data)
+}
+
+func (s *Server) GetFeedbackByID(c *gin.Context) {
+	ID := c.Param("ID")
+	if ID == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+
+	newID, err := strconv.ParseInt(ID, 10, 32)
+	if err != nil {
+		log.Error(err)
+	}
+
+	feedback, err := s.database.GetFeedbackByID(newID)
+	if err != nil {
+		log.Error(err)
+	}
+
+	c.JSON(http.StatusOK, feedback)
 }
 
 func (s *Server) MarkReadFeedback(c *gin.Context) {
@@ -156,6 +194,20 @@ func (s *Server) NewUser(c *gin.Context) {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Error("Failed to generate token")
+	}
+
+	webhookBody, err := json.Marshal(map[string]string{
+		"username":   "Big Brother",
+		"avatar_url": "https://www.discordavatars.com/wp-content/uploads/2020/10/cctv-camera-avatar-150x150.jpg",
+		"content":    user.Username + " has joined the party!",
+	})
+	if err != nil {
+		log.Error(err)
+	}
+
+	hook, err := http.Post(s.config.Webhooks.NewUserURL, "application/json", bytes.NewBuffer(webhookBody))
+	if err != nil {
+		log.Error(err, hook)
 	}
 
 	c.JSON(http.StatusOK, token)
