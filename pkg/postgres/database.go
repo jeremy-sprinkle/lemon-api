@@ -107,7 +107,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 	    save_state
 	    ) VALUES (
 	    :id,
-		PGP_SYM_ENCRYPT(:username, :encrypt_key),
+		:username,
 	    :hash,
 	    :save_state
 	)
@@ -120,7 +120,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 	srv.stmtGetUserByID, err = srv.conn.PrepareNamed(`
 	SELECT 
 	    id,
-		PGP_SYM_DECRYPT(username, :encrypt_key) AS username,
+		username,
 	    hash,
 	    save_state
 	FROM
@@ -136,7 +136,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 	srv.stmtGetUserByUsername, err = srv.conn.PrepareNamed(`
 	SELECT 
 	    id,
-		PGP_SYM_DECRYPT(username, :encrypt_key) AS username,
+		username, 
 	    hash,
 	    save_state
 	FROM
@@ -238,7 +238,7 @@ func (s *Service) GetUserByID(ID string) (*lemon_api.User, error) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
-		}).Error("Failed to Get GetUser")
+		}).Error("Failed to Get GetUserByID")
 		return nil, err
 	}
 	return &user, err
@@ -253,11 +253,11 @@ func (s *Service) GetUserByUsername(username string) (*lemon_api.User, error) {
 		Username:      username,
 		EncryptionKey: s.encryptionKey,
 	}
-	err := s.stmtGetUserByID.Get(&user, query)
+	err := s.stmtGetUserByUsername.Get(&user, query)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
-		}).Error("Failed to Get GetUser")
+		}).Error("Failed to Get GetUserByUsername")
 		return nil, err
 	}
 	return &user, err

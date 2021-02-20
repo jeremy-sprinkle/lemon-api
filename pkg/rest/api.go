@@ -46,9 +46,9 @@ func (s *Server) Initialise() {
 
 	s.engine.POST("api/register", s.NewUser)
 	s.engine.POST("api/login", s.Login)
-	s.engine.PUT("api/save/:ID", security.Authenticate(s.config, false), s.UpdateUser)
-	s.engine.GET("api/save/:ID", security.Authenticate(s.config, false), s.GetUser)
-	s.engine.DELETE("api/save/:ID", security.Authenticate(s.config, false), s.DeleteUser)
+	s.engine.PUT("api/save/", security.Authenticate(s.config), s.UpdateUser)
+	s.engine.GET("api/save/", security.Authenticate(s.config), s.GetUser)
+	s.engine.DELETE("api/save/", security.Authenticate(s.config), s.DeleteUser)
 
 	if service, err := postgres.NewService(s.config); err != nil {
 		log.WithFields(log.Fields{
@@ -137,6 +137,11 @@ func (s *Server) NewUser(c *gin.Context) {
 	accountID := uuid.New().String()
 	user.ID = accountID
 
+	unHashed := user.Hash
+	newHash := sha256.Sum256([]byte(unHashed + s.config.Security.Salt + user.Username))
+	newHashSlice := newHash[:]
+	user.Hash = bytes.NewBuffer(newHashSlice).String()
+
 	_, err := s.database.NewUser(user)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -145,7 +150,7 @@ func (s *Server) NewUser(c *gin.Context) {
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}
 
-	token, err := s.GenerateToken(user.Username, user.Hash)
+	token, err := s.GenerateToken(user.Username, unHashed)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
@@ -176,23 +181,14 @@ func (s *Server) Login(c *gin.Context) {
 }
 
 func (s *Server) GetUser(c *gin.Context) {
-	ID := c.Param("ID")
-	if ID == "" {
-		log.Error("No ID provided")
-		c.AbortWithStatus(http.StatusBadRequest)
-	}
-
 	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
 	if err != nil {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
-	if ID != *tokenAccountID {
+		log.WithFields(log.Fields{"err":err}).Error("Failed to get token.ID")
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 
-	data, err := s.database.GetUserByID(ID)
+	data, err := s.database.GetUserByID(*tokenAccountID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
@@ -211,7 +207,14 @@ func (s *Server) UpdateUser(c *gin.Context) {
 		}).Error("Failed to bind JSON")
 		c.AbortWithStatus(http.StatusBadRequest)
 	}
-	err := s.database.UpdateUser(user)
+	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
+	if err != nil {
+		log.WithFields(log.Fields{"err":err}).Error("Failed to get token.ID")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	user.ID = *tokenAccountID
+	err = s.database.UpdateUser(user)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
@@ -223,12 +226,13 @@ func (s *Server) UpdateUser(c *gin.Context) {
 }
 
 func (s *Server) DeleteUser(c *gin.Context) {
-	ID := c.Param("ID")
-	if ID == "" {
-		log.Error("No ID provided")
-		c.AbortWithStatus(http.StatusBadRequest)
+	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
+	if err != nil {
+		log.WithFields(log.Fields{"err":err}).Error("Failed to get token.ID")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
 	}
-	err := s.database.DeleteUser(ID)
+	err = s.database.DeleteUser(*tokenAccountID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,

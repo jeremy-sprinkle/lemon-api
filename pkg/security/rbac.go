@@ -22,7 +22,7 @@ var (
 	ErrInvalidCredentials   = errors.New("invalid credentials")
 )
 
-func Authenticate(cfg *config.Config, redirectOnFailure bool) gin.HandlerFunc {
+func Authenticate(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cfg.Security.Enforce {
 			token := ""
@@ -108,6 +108,7 @@ func GetTokenAccountID(cfg *config.Config, token string) (*string, error) {
 }
 
 func VerifyToken(cfg *config.Config, token string) (*jwt.Token, error) {
+	token = strings.Split(token, "Bearer ")[1]
 	tkn, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, ErrInvalidToken
