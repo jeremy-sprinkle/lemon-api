@@ -28,6 +28,7 @@ type Service struct {
 	stmtGetUserByID       *sqlx.NamedStmt
 	stmtGetUserByUsername *sqlx.NamedStmt
 	stmtUpdateUser        *sqlx.NamedStmt
+	stmtElevateUser       *sqlx.NamedStmt
 	stmtDeleteUser        *sqlx.NamedStmt
 }
 
@@ -122,12 +123,14 @@ func NewService(cfg *config.Config) (*Service, error) {
 		id,
 	    username,
 	    hash,
-	    save_state
+	    save_state,
+	    role
 	    ) VALUES (
 	    :id,
 		:username,
 	    :hash,
-	    :save_state
+	    :save_state,
+	    :role
 	)
 `)
 	if err != nil {
@@ -140,7 +143,8 @@ func NewService(cfg *config.Config) (*Service, error) {
 	    id,
 		username,
 	    hash,
-	    save_state
+	    save_state,
+	    role
 	FROM
 		usertable
 	WHERE
@@ -156,7 +160,8 @@ func NewService(cfg *config.Config) (*Service, error) {
 	    id,
 		username, 
 	    hash,
-	    save_state
+	    save_state,
+	    role
 	FROM
 		usertable
 	WHERE
@@ -176,6 +181,17 @@ func NewService(cfg *config.Config) (*Service, error) {
 `)
 	if err != nil {
 		log.WithFields(log.Fields{"err": err}).Error("Failed stmtUpdateUser")
+		return nil, err
+	}
+
+	srv.stmtElevateUser, err = srv.conn.PrepareNamed(`
+	UPDATE usertable
+	SET
+	role = :role
+	WHERE id = :id
+`)
+	if err != nil {
+		log.WithFields(log.Fields{"err": err}).Error("Failed stmtElevateUser")
 		return nil, err
 	}
 
@@ -213,7 +229,7 @@ func (s *Service) GetFeedback() ([]*lemon_api.Feedback, error) {
 }
 
 func (s *Service) GetFeedbackByID(ID int64) (*lemon_api.Feedback, error) {
-	var feedback *lemon_api.Feedback
+	var feedback lemon_api.Feedback
 	query := struct {
 		ID int64 `db:"id"`
 	}{ID: ID}
@@ -224,7 +240,7 @@ func (s *Service) GetFeedbackByID(ID int64) (*lemon_api.Feedback, error) {
 		}).Error("Failed to Get GetFeedbackByID")
 		return nil, err
 	}
-	return feedback, err
+	return &feedback, err
 }
 
 func (s *Service) MarkReadFeedback(ID int64) error {
@@ -249,12 +265,14 @@ func (s *Service) NewUser(user lemon_api.User) (sql.Result, error) {
 		Username      string `db:"username"`
 		Hash          string `db:"hash"`
 		SaveState     string `db:"save_state"`
+		Role	      string `db:"role"`
 		EncryptionKey string `db:"encrypt_key"`
 	}{
 		ID:            user.ID,
 		Username:      user.Username,
 		Hash:          user.Hash,
 		SaveState:     user.SaveState,
+		Role: 		user.Role,
 		EncryptionKey: s.encryptionKey,
 	}
 	return s.stmtNewUser.Exec(query)
@@ -315,6 +333,24 @@ func (s *Service) UpdateUser(user lemon_api.User) error {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Error("Failed to Exec UpdateUser")
+		return err
+	}
+	return nil
+}
+
+func (s *Service) ElevateUser(user lemon_api.User) error {
+	query := struct {
+		ID            string `db:"id"`
+		Role 		string `db:"role"`
+	}{
+		ID:            user.ID,
+		Role: 			user.Role,
+	}
+	_, err := s.stmtElevateUser.Exec(query)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Failed to Exec ElevateUser")
 		return err
 	}
 	return nil

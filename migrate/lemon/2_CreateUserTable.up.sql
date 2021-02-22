@@ -4,7 +4,8 @@ CREATE TABLE usertable (
     id VARCHAR(36) PRIMARY KEY UNIQUE,
     username BYTEA UNIQUE NOT NULL,
     hash BYTEA NOT NULL,
-    save_state VARCHAR
+    save_state VARCHAR,
+    role VARCHAR
 );
 
 CREATE INDEX user_index ON usertable (id);

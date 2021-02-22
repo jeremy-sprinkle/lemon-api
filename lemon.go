@@ -7,6 +7,11 @@ type User struct {
 	Username  string `json:"username" db:"username"`
 	Hash      string `json:"hash" db:"hash"`
 	SaveState string `json:"save_state" db:"save_state"`
+	Role      string `json:"role" db:"role"`
+}
+
+type Role struct {
+	Name         string `json:"name" db:"name"`
 }
 
 type Feedback struct {
@@ -23,6 +28,20 @@ type TokenRequest struct {
 	Hash     string `json:"hash"`
 }
 
+type RoleRequest struct {
+	Secret   string `json:"secret"`
+}
+
 type Token struct {
 	Value string `json:"token"`
 }
+
+var (
+	UserRole = Role{
+		Name:         "USER",
+	}
+
+	DeveloperRole = Role{
+		Name:         "DEVELOPER",
+	}
+)

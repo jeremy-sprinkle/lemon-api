@@ -49,9 +49,10 @@ func (s *Server) Initialise() {
 	s.engine.POST("api/register", s.NewUser)
 	s.engine.POST("api/login", s.Login)
 	s.engine.GET("api/logout", s.Logout)
-	s.engine.PUT("api/save/", security.Authenticate(s.config), s.UpdateUser)
-	s.engine.GET("api/save/", security.Authenticate(s.config), s.GetUser)
-	s.engine.DELETE("api/save/", security.Authenticate(s.config), s.DeleteUser)
+	s.engine.PUT("api/save", s.UpdateUser)
+	s.engine.PUT("api/elevate", s.ElevateUser)
+	s.engine.GET("api/save/:ID", s.GetUser)
+	s.engine.DELETE("api/save", s.DeleteUser)
 
 	if service, err := postgres.NewService(s.config); err != nil {
 		log.WithFields(log.Fields{
@@ -140,6 +141,23 @@ func (s *Server) GetFeedbackByID(c *gin.Context) {
 }
 
 func (s *Server) MarkReadFeedback(c *gin.Context) {
+	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
+	if err != nil {
+		log.WithFields(log.Fields{"err": err}).Error("Failed to get token.ID")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	user, err := s.database.GetUserByID(*tokenAccountID)
+	if err != nil {log.Error(err)
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	if user.Role != lemon_api.DeveloperRole.Name {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
 	ID := c.Param("ID")
 	if ID == "" {
 		log.Error("No ID provided")
@@ -180,6 +198,8 @@ func (s *Server) NewUser(c *gin.Context) {
 	newHash := sha256.Sum256([]byte(unHashed + s.config.Security.Salt + user.Username))
 	newHashSlice := newHash[:]
 	user.Hash = bytes.NewBuffer(newHashSlice).String()
+
+	user.Role = lemon_api.UserRole.Name
 
 	_, err := s.database.NewUser(user)
 	if err != nil {
@@ -283,6 +303,60 @@ func (s *Server) UpdateUser(c *gin.Context) {
 	c.AbortWithStatus(http.StatusOK)
 }
 
+func (s *Server) ElevateUser(c *gin.Context) {
+	var request lemon_api.RoleRequest
+	if err := c.BindJSON(&request); err != nil {
+		log.Error(err)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
+	if err != nil {
+		log.WithFields(log.Fields{"err": err}).Error("Failed to get token.ID")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	user, err := s.database.GetUserByID(*tokenAccountID)
+	if err != nil {log.Error(err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return}
+
+	if request.Secret != s.config.Security.Secret {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	user.Role = lemon_api.DeveloperRole.Name
+	err = s.database.ElevateUser(*user)
+	if err != nil {log.Error(err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return}
+
+	var token lemon_api.Token
+
+	tkn := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
+		"iss":   "https://lemon.indiedev.io",
+		"exp":   time.Now().Add(time.Hour * 24 * 7).Unix(),
+		"sub":    user.ID,
+		"aud":   "https://lemon.indiedev.io",
+		"nbf":   time.Now().Unix(),
+		"id":    user.ID,
+		"guest": false,
+		"roles": lemon_api.DeveloperRole,
+		"name":  user.Username,
+	})
+
+	signedString, err := tkn.SignedString([]byte(s.config.Security.Secret))
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	token.Value = signedString
+
+	c.JSON(http.StatusOK, token)
+}
+
 func (s *Server) DeleteUser(c *gin.Context) {
 	tokenAccountID, err := security.GetTokenAccountID(s.config, c.GetHeader("Authorization"))
 	if err != nil {
@@ -330,6 +404,7 @@ func (s *Server) GenerateToken(username string, hash string) (*lemon_api.Token, 
 		"nbf":   time.Now().Unix(),
 		"id":    existingAccount.ID,
 		"guest": false,
+		"roles": lemon_api.UserRole,
 		"name":  existingAccount.Username,
 	})
 
