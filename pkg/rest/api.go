@@ -231,6 +231,7 @@ func (s *Server) NewUser(c *gin.Context) {
 		log.Error(err, hook)
 	}
 
+	c.SetCookie("lemon-token", token.Value, 604800, "/", ".indiedev.io", true, false)
 	c.JSON(http.StatusOK, token)
 }
 
@@ -411,6 +412,13 @@ func (s *Server) GenerateToken(username string, hash string) (*lemon_api.Token, 
 
 	var token lemon_api.Token
 
+	var role lemon_api.Role
+	if existingAccount.Role == "DEVELOPER" {
+		role = lemon_api.DeveloperRole
+	} else if existingAccount.Role == "USER"{
+		role = lemon_api.UserRole
+	}
+
 	tkn := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
 		"iss":   "https://lemon.indiedev.io",
 		"exp":   time.Now().Add(time.Hour * 24 * 7).Unix(),
@@ -419,7 +427,7 @@ func (s *Server) GenerateToken(username string, hash string) (*lemon_api.Token, 
 		"nbf":   time.Now().Unix(),
 		"id":    existingAccount.ID,
 		"guest": false,
-		"roles": lemon_api.UserRole,
+		"roles": role,
 		"name":  existingAccount.Username,
 	})
 
