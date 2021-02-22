@@ -47,6 +47,7 @@ func (s *Server) Initialise() {
 	s.engine.PUT("api/feedback/:ID", s.MarkReadFeedback)
 
 	s.engine.POST("api/register", s.NewUser)
+	s.engine.GET("api/taken/:Username", s.UserAvailableCheck)
 	s.engine.POST("api/login", s.Login)
 	s.engine.GET("api/logout", s.Logout)
 	s.engine.PUT("api/save", s.UpdateUser)
@@ -231,6 +232,20 @@ func (s *Server) NewUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, token)
+}
+
+func (s *Server) UserAvailableCheck(c *gin.Context){
+	username := c.Param("Username")
+	if username == ""{
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	_, err := s.database.GetUserByUsername(username)
+	if err == nil {
+		c.AbortWithStatus(http.StatusConflict)
+		return
+	}
+	c.AbortWithStatus(http.StatusOK)
 }
 
 func (s *Server) Login(c *gin.Context) {
